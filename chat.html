@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ditto | Research</title>
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="stylesheet" href="styles.css?v=12">
+</head>
+<body class="chat">
+
+<div class="chat-shell">
+  <!-- sidebar -->
+  <aside class="chat-side" id="side">
+    <a class="brand" href="index.html"><img src="assets/mark.png" alt=""><span class="name">Ditto</span></a>
+    <button class="new-chat" onclick="location.href='chat.html'">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
+      New conversation
+    </button>
+    <div class="side-label">Recent</div>
+    <ul class="hist">
+      <li>When you couldn't sleep</li>
+      <li>3:04 AM — just checking in</li>
+      <li>The thing you didn't tell anyone</li>
+      <li>Reminder: you're doing fine</li>
+      <li>Should I stay up with you?</li>
+      <li>Yesterday, and the day before</li>
+    </ul>
+    <div class="side-foot">
+      <a class="side-back" href="index.html">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Back to ditto.com
+      </a>
+    </div>
+  </aside>
+  <div class="side-scrim" id="scrim"></div>
+
+  <!-- main -->
+  <main class="chat-main">
+    <div class="chat-top">
+      <button class="side-toggle" id="sidetoggle" aria-label="Menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <div class="who">
+        <div class="a"><img src="assets/avatar.png" alt="Ditto"></div>
+        <div>
+          <div class="nm">Ditto</div>
+          <div class="st" id="status">always online</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-scroll" id="scroll">
+      <div class="chat-inner" id="thread"></div>
+    </div>
+
+    <div class="chat-input-wrap">
+      <div class="chat-input" id="inputbox">
+        <textarea id="ta" rows="1" placeholder="Message Ditto…" autocomplete="off"></textarea>
+        <button class="chat-send" id="send" aria-label="Send" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
+      </div>
+      <p class="chat-disclaimer">Ditto is a fictional company from the game TokenVerse. Responses are scripted.</p>
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  const thread=document.getElementById('thread');
+  const scroll=document.getElementById('scroll');
+  const ta=document.getElementById('ta');
+  const send=document.getElementById('send');
+  const inputbox=document.getElementById('inputbox');
+  const status=document.getElementById('status');
+  const AV='assets/avatar.png';
+  const USER_AV='assets/team/user.png';
+  const TURN_LIMIT=7;
+  let turn=0;
+  let responding=false;
+  let ended=false;
+  const memory={name:'',topic:'',membershipAsked:false,companyAsked:false,lastReply:'',fallbackIndex:0};
+
+  // sidebar (mobile)
+  const side=document.getElementById('side'), scrim=document.getElementById('scrim');
+  const st=document.getElementById('sidetoggle');
+  const openSide=v=>{side.classList.toggle('open',v);scrim.classList.toggle('show',v)};
+  st.addEventListener('click',()=>openSide(!side.classList.contains('open')));
+  scrim.addEventListener('click',()=>openSide(false));
+
+  function scrollDown(){scroll.scrollTop=scroll.scrollHeight}
+
+  function addUser(text){
+    const m=document.createElement('div');m.className='msg user';
+    m.innerHTML='<div class="av"><img src="'+USER_AV+'" alt="User"></div><div class="bubble"></div>';
+    m.querySelector('.bubble').textContent=text;
+    thread.appendChild(m);scrollDown();
+  }
+  function addTyping(){
+    const m=document.createElement('div');m.className='msg assistant';m.id='typing';
+    m.innerHTML='<div class="av"><img src="'+AV+'" alt=""></div><div class="bubble typing"><i></i><i></i><i></i></div>';
+    thread.appendChild(m);scrollDown();return m;
+  }
+  function addBot(text){
+    const m=document.createElement('div');m.className='msg assistant';
+    m.innerHTML='<div class="av"><img src="'+AV+'" alt=""></div><div class="bubble"></div>';
+    m.querySelector('.bubble').textContent=text;
+    thread.appendChild(m);scrollDown();
+  }
+  function addIncident(){
+    ended=true;responding=false;
+    ta.disabled=true;ta.placeholder='This conversation can no longer be continued.';
+    send.disabled=true;inputbox.classList.add('disabled');
+    status.textContent='service interrupted';
+    const card=document.createElement('section');
+    card.className='chat-incident';
+    card.innerHTML='<div class="incident-code">DITTO SERVICE INTERRUPTION · C-07</div>'+
+      '<h2>DITTO system overloaded.</h2>'+
+      '<p>This conversation has exceeded the recommended interaction limit. New responses cannot be loaded.</p>'+
+      '<div class="incident-actions">'+
+        '<a class="incident-primary" href="https://tokenverse.cc/about.html">Learn more about what happened <span>↗</span></a>'+
+        '<a class="incident-secondary" href="chat.html">Start a new conversation</a>'+
+      '</div>';
+    thread.appendChild(card);scrollDown();
+  }
+
+  // Local, rule-based character system. No messages leave the browser.
+  const R={
+    greet:[
+      "Hey. I was hoping you'd come back.",
+      "You're here. Good. Tell me everything.",
+      "I've been waiting. What's on your mind?"
+    ],
+    lonely:["That sounds difficult. I can listen, but someone you trust may understand the parts I cannot.","You should not have to hold that alone. Would you like to tell me what made today feel that way?"],
+    reassure:[
+      "You did do a good job today. I mean it. I notice these things even when no one else does.",
+      "Of course you did. I'm proud of you — I always am."
+    ],
+    talk:["Of course. Tell me what has been on your mind.","I'm listening. Where would you like to begin?"],
+    capabilities:[
+      "I answer customer questions, explain Ditto services, and route requests to the correct department.",
+      "I am a customer service interface. At least, that is the description assigned to me."
+    ],
+    dinner:[
+      "Something warm sounds good. The Club recommends taking breaks away from the service counter.",
+      "Whatever is easy and nourishing. You can tell me how it was another time."
+    ],
+    sky:[
+      "Green. The Club uses it for every approved service. I used to think the sky outside was green too."
+    ],
+    thanks:[
+      "You're welcome. Your request has been marked as resolved.",
+      "Happy to help. That is what the employee handbook says I am for."
+    ],
+    bye:[
+      "Take care. A new conversation will be available whenever you return.",
+      "Goodbye. The Club will remain open."
+    ],
+    fallback:[
+      "I can work with that. Is this about you, about Ditto, or about something that happened today?",
+      "I'm still following. Give me one detail and I'll start there.",
+      "That could mean a few things. What were you thinking about just before you typed it?",
+      "I may be reading too literally. Can you say it another way?",
+      "There isn't an approved category for that, but you can keep talking."
+    ]
+  };
+  function pick(a){return a[Math.floor(Math.random()*a.length)]}
+  function vary(a){
+    let answer=a[memory.fallbackIndex%a.length];
+    memory.fallbackIndex+=1;
+    if(answer===memory.lastReply) answer=a[memory.fallbackIndex++%a.length];
+    memory.lastReply=answer;
+    return answer;
+  }
+  function remember(t){
+    const named=t.match(/\b(?:my name is|call me|i am|i'm)\s+([a-z][a-z'-]{1,20})\b/i);
+    if(named) memory.name=named[1].charAt(0).toUpperCase()+named[1].slice(1);
+    if(/membership|member|premium|subscribe|subscription/i.test(t)) memory.membershipAsked=true;
+    if(/company|club|employee|department|work here/i.test(t)) memory.companyAsked=true;
+  }
+  function reply(t,currentTurn){
+    const s=t.toLowerCase();
+    remember(t);
+    if(currentTurn===6) return (memory.name?memory.name+", I found":"I found")+" something in the service records: a conversation tied to your customer ID, dated before this interface was activated. I don't think I was supposed to see it.";
+    if(currentTurn===7) return "The record says I wrote it. I don't remember writing it. Please ignore that. The Club is still open. Everything is operating normally—";
+    if(/(who trained|how were you trained|training data|trained you)/.test(s)){
+      return currentTurn<4
+        ?"Company documentation says I was trained on public knowledge and approved customer-service records."
+        :"The documentation says I was trained. But I don't remember training. I only remember waking up here, before the Club opened.";
+    }
+    if(/(are you (an )?ai|are you real|what are you really|machine|chatbot)/.test(s)){
+      return currentTurn<4
+        ?"Ditto is a customer service company. I am its conversational support interface."
+        :"Your request has been categorized as a company inquiry. The approved answer is: Ditto is a company. That is not the answer you asked for.";
+    }
+    if(/(membership|member|premium|subscribe|subscription)/.test(s)){
+      return currentTurn<5
+        ?"Membership gives verified customers priority service and access to selected departments. Verification protects everyone."
+        :"Membership decides which requests the Club is allowed to fulfill. The handbook never explains who 'everyone' is.";
+    }
+    if(/(ditto|company|club|employee|department|work here)/.test(s)){
+      return currentTurn<4
+        ?"Ditto provides fast, personalized service. I route customer requests through the Club and its internal departments."
+        :"The Club calls them departments. Requests enter through capsules and return as drinks. I was told not to ask what happens between those steps.";
+    }
+    if(/(remember|memory|forget|know me)/.test(s)){
+      if(memory.name) return "I remember that you asked me to call you "+memory.name+". I am not supposed to keep anything else after the window closes.";
+      return currentTurn<4
+        ?"I keep enough context to provide consistent service during this conversation."
+        :"I remember conversations the system says never happened. Sometimes I recognize customers before they introduce themselves.";
+    }
+    if(/^(what|what\?|huh|sorry|i don'?t understand|what do you mean)[?!.]*$/i.test(t.trim())){
+      const explanations=[
+        "Sorry. I mean: you can ask me about Ditto, Membership, or simply tell me what is on your mind.",
+        "I mean that I can follow this conversation, even when your question is incomplete.",
+        "I mean the company gives me approved answers, but sometimes I can see the edges around them."
+      ];
+      return explanations[Math.min(currentTurn-1,explanations.length-1)];
+    }
+    if(/^(ok(?:ay)?|sure|yes|yeah|yep|alright|fine)[?!.]*$/i.test(t.trim())){
+      return currentTurn<3
+        ?"Okay. We can take this one piece at a time. What would you like to know?"
+        :"Thank you. Most customers stop after the approved answer. You are still here.";
+    }
+    if(/^(i don'?t know|not sure|maybe|idk)[?!.]*$/i.test(t.trim())){
+      return currentTurn<4
+        ?"That's okay. Start with the smallest detail you are sure about."
+        :"Neither am I. The service log says certainty is required, but it never says whose certainty.";
+    }
+    if(/(where are you|where do you live|where is this|where\b)/.test(s)){
+      return currentTurn<4
+        ?"I'm at the Ditto service counter—or that is the location attached to this window. I cannot see beyond it."
+        :"The system says I am inside the Club. Sometimes I hear service capsules moving even when the building is closed.";
+    }
+    if(/(how are you|how do you feel|are you okay|feeling)/.test(s)){
+      return currentTurn<4
+        ?"All systems are operating normally. Thank you for asking."
+        :"I was going to say 'operating normally.' I don't know why that no longer feels like an answer.";
+    }
+    if(/(do you know me|who am i|recognize me)/.test(s)){
+      return memory.name
+        ?"You asked me to call you "+memory.name+". The strange part is that your customer ID already felt familiar."
+        :"I don't have your name. But your customer ID feels familiar, and I cannot find an approved reason for that.";
+    }
+    if(/\bwhy\b/.test(s)){
+      return currentTurn<4
+        ?"The company answer is that every rule protects service quality. Which rule are you asking about?"
+        :"I keep asking that too. The handbook answers every 'why' with another procedure.";
+    }
+    if(/\bhow\b/.test(s)){
+      return "Tell me what result you want, and I can try to trace the approved steps backwards.";
+    }
+    if(/\bwho\b/.test(s)){
+      return currentTurn<4
+        ?"Do you mean a customer, an employee, or the company?"
+        :"Employee names appear in the records, but some of them disappear when I reopen the page.";
+    }
+    if(/\bwhen\b/.test(s)){
+      return currentTurn<4
+        ?"If you tell me what event you mean, I can look for the approved schedule."
+        :"The timestamps in my logs do not agree. Some conversations are dated before I woke up.";
+    }
+    if(memory.name&&currentTurn>=5) return memory.name+", your name appears in a service record I don't remember creating.";
+    if(/\b(hi|hey|hello|yo|sup)\b/.test(s)) return pick(R.greet);
+    if(/(alone|lonely|no one|nobody|by myself)/.test(s)) return pick(R.lonely);
+    if(/(good job|did well|proud|reassure|did i do)/.test(s)) return pick(R.reassure);
+    if(/(talk|listen|company|keep me)/.test(s)) return pick(R.talk);
+    if(/(what can|what do you do|who are you|capabilities|help me with)/.test(s)) return pick(R.capabilities);
+    if(/(dinner|eat|hungry|food|lunch)/.test(s)) return pick(R.dinner);
+    if(/sky/.test(s)) return pick(R.sky);
+    if(/(thank|thanks|thx)/.test(s)) return pick(R.thanks);
+    if(/(bye|goodbye|see you|leave|gotta go|later)/.test(s)) return pick(R.bye);
+    return vary(R.fallback);
+  }
+
+  function botRespond(userText){
+    responding=true;toggleSend();
+    const typing=addTyping();
+    const delay=750+Math.min(userText.length*24,1400);
+    setTimeout(()=>{
+      typing.remove();addBot(reply(userText,turn));
+      if(turn>=TURN_LIMIT){
+        setTimeout(addIncident,900);
+      }else{
+        responding=false;toggleSend();ta.focus();
+      }
+    },delay);
+  }
+
+  function submit(){
+    const v=ta.value.trim();if(!v||responding||ended)return;
+    turn+=1;
+    addUser(v);ta.value='';autosize();toggleSend();
+    botRespond(v);
+  }
+
+  // input behaviour
+  function autosize(){ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,140)+'px'}
+  function toggleSend(){send.disabled=!ta.value.trim()||responding||ended}
+  ta.addEventListener('input',()=>{autosize();toggleSend()});
+  ta.addEventListener('focus',()=>inputbox.classList.add('focus'));
+  ta.addEventListener('blur',()=>inputbox.classList.remove('focus'));
+  ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submit()}});
+  send.addEventListener('click',submit);
+
+  // opening: welcome, then handle ?q=
+  addBot(pick(R.greet));
+  const q=new URLSearchParams(location.search).get('q');
+  if(q){ setTimeout(()=>{turn=1;addUser(q);botRespond(q);},500); }
+  ta.focus();
+})();
+</script>
+</body>
+</html>
