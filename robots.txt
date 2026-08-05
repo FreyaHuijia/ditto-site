@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://ditto.tokenverse.cc/sitemap.xml
